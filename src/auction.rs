@@ -1,55 +1,32 @@
+use reqwest;
 use item;
 use serde_json;
 use std::fs::File;
 use std::io::Read;
 
-use postgres::Connection;
 use chrono::NaiveDateTime;
-use util;
-
-
-#[derive(Serialize, Deserialize, Clone, Debug)]
-pub struct Auction {
-    auc: i32,
-    item: i32,
-    owner: String,
-    #[serde(rename = "ownerRealm")]
-    owner_realm: String,
-    bid: i64,
-    buyout: i64,
-    quantity: i16,
-    #[serde(rename = "timeLeft")]
-    time_left: String,
-    #[serde(skip)]
-    time: u64
-}
+use models::auction::{NewAuction, Auction};
+use diesel;
+use diesel::RunQueryDsl;
+use diesel::PgConnection;
 
 impl Auction {
-    pub fn set_time(&mut self, time: u64) {
-        self.time = time;
-    }
-    pub fn insert(&self, conn: &Connection) {
-        let native_time = NaiveDateTime::from_timestamp(self.time as i64, 0);
-        match conn.execute("
-            INSERT INTO auction 
-                (auc, item, owner, ownerRealm, bid, buyout, quantity, timeLeft, time)
-            VALUES
-                ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-            ON CONFLICT (auc)
-                DO NOTHING",
-                &[
-                    &self.auc, &self.item, &self.owner, &self.owner_realm, 
-                    &self.bid, &self.buyout, &self.quantity, &self.time_left, &native_time
-                ] 
-        )
+    pub fn insert(&self, conn: &PgConnection) {
+        use schema::auction;
+
+        let new_auction = NewAuction::from(self);
+
+        match diesel::insert_into(auction::table)
+            .values(&new_auction)
+            .execute(conn)
         {
-            Ok(res) => {},
-            Err(err) => println!("{}", err)
+            Ok(_) => {},
+            Err(_) => {}
         }
     }
 }
 
-pub fn insert_auctions(conn: &Connection, auctions: &Vec<Auction>) {
+pub fn insert_auctions(conn: &PgConnection, auctions: &Vec<Auction>) {
     for a in auctions {
         a.insert(&conn)
     }
@@ -66,12 +43,12 @@ pub fn get_auctions_of_item(id: i32, auctions: &Vec<Auction>) -> Vec<Auction> {
     new_auctions
 }
 
-pub fn get_auction_data(url: &str, time: u64) -> Vec<Auction> {
-    let data = util::get_url_content_https(url);
+pub fn get_auction_data(url: &str, time: i64) -> Vec<Auction> {
+    let data = reqwest::get(url).unwrap().text().unwrap();
     let v: serde_json::Value = serde_json::from_str(&data).unwrap();
     let mut auctions: Vec<Auction> = serde_json::from_str(&v["auctions"].to_string()).unwrap();
     for a in auctions.iter_mut() {
-        a.set_time(time);
+        a.time = time
     }
     auctions
 }
@@ -85,15 +62,14 @@ pub fn get_auction_data_from_file() -> Vec<Auction> {
 }
 
 //TODO: make less error prone
-pub fn get_auction_data_url(key: &str, realm: &str) -> (String, u64) {
+pub fn get_auction_data_url(key: &str, realm: &str) -> (String, i64) {
     let base = "https://eu.api.battle.net/wow/auction/data/";
     let url = format!("{}{}?locale=en_GB&apikey={}", base, realm, key);
-
-    let data = util::get_url_content_https(&url);
+    let data = reqwest::get(&url).unwrap().text().unwrap();
 
     let v: serde_json::Value = serde_json::from_str(&data).unwrap();
     (
         v["files"][0]["url"].as_str().unwrap().into(),
-        v["files"][0]["lastModified"].as_u64().unwrap()
+        v["files"][0]["lastModified"].as_i64().unwrap()
     )
 }
