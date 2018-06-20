@@ -57,7 +57,7 @@ pub struct Item {
     pub id: i32,
     pub description: String,
     pub name: String,
-    pub icon: String,
+    pub icon: Option<String>,
     pub stackable: i16,
     #[serde(rename = "itemBind")]
     pub item_bind: i16,
@@ -162,7 +162,7 @@ impl NewItem {
             id: item.id,
             description: item.description.to_owned(),
             name: item.name.to_owned(),
-            icon: item.icon.to_owned(),
+            icon: item.icon.to_owned().unwrap_or("inv_misc_questionmark".into()),
             stackable: item.stackable,
             item_bind: item.item_bind,
             buy_price: item.buy_price,

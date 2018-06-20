@@ -25,7 +25,7 @@ impl Item {
     }
 }
 
-pub fn insert_items(conn: &PgConnection, items: Vec<Item>) {
+pub fn insert_items(conn: &PgConnection, items: &Vec<Item>) {
     for item in items {
         item.insert(&conn);
     }

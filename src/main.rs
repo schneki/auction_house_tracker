@@ -35,12 +35,16 @@ fn main() {
     let ids = item::get_item_ids_from_auctions(&auctions);
     let missing_ids = item::get_missing_ids(&conn, &ids);
     println!("{}", missing_ids.len());
+    
+    let items = 
+        if missing_ids.len() >= num_cpus::get() {
+            item::get_items_threaded(&c.bnet_key, &missing_ids)
+        } else {
+            item::get_items(&c.bnet_key, &missing_ids)
+        };
 
-
-    let items = item::get_items(&c.bnet_key, &missing_ids);
-    item::insert_items(&conn, items);
-
-    //save_auction_data(&c, &conn);
+    item::insert_items(&conn, &items);
+    auction::insert_auctions(&conn, &auctions);
 
     
     /*
@@ -53,26 +57,3 @@ fn main() {
     }
     */
 }
-
-fn save_item_data(c: &Config, conn: &PgConnection) {
-    let ids = item::get_item_ids();
-    let items = item::get_items(&c.bnet_key, &ids);
-    item::insert_items(&conn, items);
-}
-
-fn save_auction_data(c: &Config, conn: &PgConnection) {
-    let ids = item::get_item_ids();
-    let (url, time) = auction::get_auction_data_url(&c.bnet_key, &c.realm);
-
-    let auctions = auction::get_auction_data(&url, time);
-    let mut all_auctions = Vec::new();
-
-    for id in ids {
-        let auctions_of_item = auction::get_auctions_of_item(id, &auctions);
-        all_auctions.extend(auctions_of_item); 
-    }
-    auction::insert_auctions(conn, &all_auctions);
-
-}
-
-
