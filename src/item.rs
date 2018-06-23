@@ -106,35 +106,81 @@ pub fn get_item_ids() -> Vec<i32> {
 }
 
 use std::thread;
+use std::sync::{Arc, Mutex};
+use std::sync::mpsc::{self, Receiver, Sender};
 use num_cpus;
 
+pub enum Status {
+    Increment,
+    Finished
+}
+
 pub fn get_items_threaded(key: &str, ids: &Vec<i32>) -> Vec<Item> {
+    let chunk_len = 
+        if ids.len() >= num_cpus::get() {
+            ids.len() / num_cpus::get()
+        } else {
+            1
+        };
+
+    let (tx, rx) = mpsc::channel();
+
     let mut threads = Vec::new();
     let mut items = Vec::new();
-    let chunk_len = ids.len() / num_cpus::get();
-    println!("{}", chunk_len);
     let chunks = ids.chunks(chunk_len);
+
     for chunk in chunks.clone() {
         let k = key.to_owned();
         let c = chunk.to_owned();
+        let tx_clone = tx.clone();
+
         threads.push(thread::spawn(move || {
-            get_items(&k, &c)
+            get_items(&k, &c, tx_clone)
         }));
     }
+
+    let full_len = ids.len();
+
+    let _ = thread::spawn(move || {
+        let mut count = 0;
+        loop {
+            match rx.try_recv() {
+                Ok(status) => {
+                    match status {
+                        Increment => {
+                            count += 1;
+                            println!("{}/{}", count, full_len);
+                        },
+                        Finished => {
+                            break;
+                        }
+                    }
+                },
+                Err(_) => {}
+            };
+        };
+    });
+
+
     for t in threads {
         match t.join() {
             Ok(it) => items.extend(it),
             Err(_) => {}
         }
     }
+    tx.send(Status::Finished).unwrap();
     items
 }
 
-pub fn get_items(key: &str, ids: &Vec<i32>) -> Vec<Item> {
+pub fn get_items(key: &str, ids: &Vec<i32>, tx: Sender<Status>) -> Vec<Item> {
     let mut items = Vec::new();
     for id in ids {
         match get_item(id, key) {
-            Ok(item) => items.push(item),
+            Ok(item) => {
+                items.push(item);
+                tx.send(Status::Increment).unwrap();
+                
+            },
             Err(err) => println!("{}", err)
         }
     }

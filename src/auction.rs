@@ -6,9 +6,8 @@ use std::io::Read;
 
 use chrono::NaiveDateTime;
 use models::auction::{NewAuction, Auction};
-use diesel;
-use diesel::RunQueryDsl;
-use diesel::PgConnection;
+use diesel::{self, RunQueryDsl, PgConnection};
+use diesel::prelude::*;
 
 impl Auction {
     pub fn insert(&self, conn: &PgConnection) {
@@ -32,6 +31,26 @@ pub fn insert_auctions(conn: &PgConnection, auctions: &Vec<Auction>) {
     }
 }
 
+pub fn get_aucs_from_db(conn: &PgConnection) -> Vec<i32> {
+    use schema::auction::dsl::*;
+
+    auction.select(auc)
+        .load(conn)
+        .expect("error loading ids")
+}
+
+
+pub fn get_missing_auctions(conn: &PgConnection, auctions: &Vec<Auction>) -> Vec<Auction> {
+    let mut missing_auctions = Vec::new();
+    let db_aucs = get_aucs_from_db(conn);
+
+    for auction in auctions {
+        if let None = db_aucs.iter().find(|db_auc| &&auction.auc == db_auc) {
+            missing_auctions.push(auction.to_owned())
+        }
+    }
+    missing_auctions
+}
 
 pub fn get_auctions_of_item(id: i32, auctions: &Vec<Auction>) -> Vec<Auction> {
     let mut new_auctions = Vec::new();
